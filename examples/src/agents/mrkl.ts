@@ -1,24 +1,29 @@
-import { OpenAI } from "langchain";
-import { initializeAgentExecutor } from "langchain/agents";
-import { SerpAPI, Calculator } from "langchain/tools";
+import { initializeAgentExecutorWithOptions } from "langchain/agents";
+import { OpenAI } from "@langchain/openai";
+import { Calculator } from "@langchain/community/tools/calculator";
+import { SerpAPI } from "@langchain/community/tools/serpapi";
 
-export const run = async () => {
-  const model = new OpenAI({ temperature: 0 });
-  const tools = [new SerpAPI(), new Calculator()];
+const model = new OpenAI({ temperature: 0 });
+const tools = [
+  new SerpAPI(process.env.SERPAPI_API_KEY, {
+    location: "Austin,Texas,United States",
+    hl: "en",
+    gl: "us",
+  }),
+  new Calculator(),
+];
 
-  const executor = await initializeAgentExecutor(
-    tools,
-    model,
-    "zero-shot-react-description",
-    true
-  );
-  console.log("Loaded agent.");
+const executor = await initializeAgentExecutorWithOptions(tools, model, {
+  agentType: "zero-shot-react-description",
+  verbose: true,
+});
 
-  const input = `Who is Olivia Wilde's boyfriend? What is his current age raised to the 0.23 power?`;
+const input = `Who is Olivia Wilde's boyfriend? What is his current age raised to the 0.23 power?`;
 
-  console.log(`Executing with input "${input}"...`);
+const result = await executor.invoke({ input });
 
-  const result = await executor.call({ input });
+console.log(result);
 
-  console.log(`Got output ${result.output}`);
-};
+/*
+  { output: '2.2800773226742175' }
+*/

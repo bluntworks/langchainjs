@@ -1,8 +1,8 @@
-import url from "node:url";
-import path from "node:path";
+import * as url from "node:url";
+import * as path from "node:path";
 import { test, expect } from "@jest/globals";
-import { JSONLinesLoader } from "../jsonl.js";
-import { Document } from "../../document.js";
+import { Document } from "@langchain/core/documents";
+import { JSONLinesLoader } from "../fs/json.js";
 
 test("Test JSON loader from file", async () => {
   const filePath = path.resolve(

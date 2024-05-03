@@ -1,13 +1,14 @@
-/* eslint-disable tree-shaking/no-side-effects-in-initialization */
 /* eslint-disable spaced-comment */
 import {
-  PromptTemplate,
   ChatPromptTemplate,
   SystemMessagePromptTemplate,
   HumanMessagePromptTemplate,
-} from "../../prompts/index.js";
-
-import { ConditionalPromptSelector, isChatModel } from "../prompt_selector.js";
+  PromptTemplate,
+} from "@langchain/core/prompts";
+import {
+  ConditionalPromptSelector,
+  isChatModel,
+} from "@langchain/core/example_selectors";
 
 export const DEFAULT_QA_PROMPT = /*#__PURE__*/ new PromptTemplate({
   template:
@@ -23,8 +24,7 @@ const messages = [
   /*#__PURE__*/ SystemMessagePromptTemplate.fromTemplate(system_template),
   /*#__PURE__*/ HumanMessagePromptTemplate.fromTemplate("{question}"),
 ];
-const CHAT_PROMPT =
-  /*#__PURE__*/ ChatPromptTemplate.fromPromptMessages(messages);
+const CHAT_PROMPT = /*#__PURE__*/ ChatPromptTemplate.fromMessages(messages);
 
 export const QA_PROMPT_SELECTOR = /*#__PURE__*/ new ConditionalPromptSelector(
   DEFAULT_QA_PROMPT,

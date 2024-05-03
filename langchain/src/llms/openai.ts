@@ -1,446 +1,106 @@
-import { TiktokenModel } from "@dqbd/tiktoken";
-import {
-  Configuration,
-  ConfigurationParameters,
-  CreateCompletionRequest,
-  CreateCompletionResponse,
-  CreateCompletionResponseChoicesInner,
-  OpenAIApi,
-} from "openai";
-import fetchAdapter from "../util/axios-fetch-adapter.js";
-import type { StreamingAxiosConfiguration } from "../util/axios-fetch-adapter.js";
-import { chunkArray } from "../util/index.js";
-import { BaseLLM, BaseLLMParams } from "./base.js";
-import { calculateMaxTokens } from "../base_language/count_tokens.js";
-import { OpenAIChat } from "./openai-chat.js";
-import { LLMResult } from "../schema/index.js";
+import { OpenAI } from "@langchain/openai";
 
-interface ModelParams {
-  /** Sampling temperature to use */
-  temperature: number;
+import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
+import type { LLMResult } from "@langchain/core/outputs";
+import { getEnvironmentVariable } from "@langchain/core/utils/env";
+import { promptLayerTrackRequest } from "../util/prompt-layer.js";
+import { logVersion010MigrationWarning } from "../util/entrypoint_deprecation.js";
 
-  /**
-   * Maximum number of tokens to generate in the completion. -1 returns as many
-   * tokens as possible given the prompt and the model's maximum context size.
-   */
-  maxTokens: number;
+/* #__PURE__ */ logVersion010MigrationWarning({
+  oldEntrypointName: "llms/openai",
+  newEntrypointName: "",
+  newPackageName: "@langchain/openai",
+});
 
-  /** Total probability mass of tokens to consider at each step */
-  topP: number;
+export {
+  type AzureOpenAIInput,
+  type OpenAICallOptions,
+  type OpenAIInput,
+} from "@langchain/openai";
 
-  /** Penalizes repeated tokens according to frequency */
-  frequencyPenalty: number;
-
-  /** Penalizes repeated tokens */
-  presencePenalty: number;
-
-  /** Number of completions to generate for each prompt */
-  n: number;
-
-  /** Generates `bestOf` completions server side and returns the "best" */
-  bestOf: number;
-
-  /** Dictionary used to adjust the probability of specific tokens being generated */
-  logitBias?: Record<string, number>;
-
-  /** Whether to stream the results or not. Enabling disables tokenUsage reporting */
-  streaming: boolean;
-}
-
-/**
- * Input to OpenAI class.
- * @augments ModelParams
- */
-interface OpenAIInput extends ModelParams {
-  /** Model name to use */
-  modelName: string;
-
-  /** Holds any additional parameters that are valid to pass to {@link
-   * https://platform.openai.com/docs/api-reference/completions/create |
-   * `openai.createCompletion`} that are not explicitly specified on this class.
-   */
-  modelKwargs?: Kwargs;
-
-  /** Batch size to use when passing multiple documents to generate */
-  batchSize: number;
-
-  /** List of stop words to use when generating */
-  stop?: string[];
-
-  /**
-   * Timeout to use when making requests to OpenAI.
-   */
-  timeout?: number;
-}
-
-type TokenUsage = {
-  completionTokens?: number;
-  promptTokens?: number;
-  totalTokens?: number;
-};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Kwargs = Record<string, any>;
-
-/**
- * Wrapper around OpenAI large language models.
- *
- * To use you should have the `openai` package installed, with the
- * `OPENAI_API_KEY` environment variable set.
- *
- * @remarks
- * Any parameters that are valid to be passed to {@link
- * https://platform.openai.com/docs/api-reference/completions/create |
- * `openai.createCompletion`} can be passed through {@link modelKwargs}, even
- * if not explicitly available on this class.
- *
- * @augments BaseLLM
- * @augments OpenAIInput
- */
-export class OpenAI extends BaseLLM implements OpenAIInput {
-  temperature = 0.7;
-
-  maxTokens = 256;
-
-  topP = 1;
-
-  frequencyPenalty = 0;
-
-  presencePenalty = 0;
-
-  n = 1;
-
-  bestOf = 1;
-
-  logitBias?: Record<string, number>;
-
-  modelName = "text-davinci-003";
-
-  modelKwargs?: Kwargs;
-
-  batchSize = 20;
-
-  timeout?: number;
-
-  stop?: string[];
-
-  streaming = false;
-
-  private client: OpenAIApi;
-
-  private clientConfig: ConfigurationParameters;
-
-  constructor(
-    fields?: Partial<OpenAIInput> &
-      BaseLLMParams & {
-        openAIApiKey?: string;
-      },
-    configuration?: ConfigurationParameters
-  ) {
-    if (
-      fields?.modelName?.startsWith("gpt-3.5-turbo") ||
-      fields?.modelName?.startsWith("gpt-4")
-    ) {
-      // eslint-disable-next-line no-constructor-return, @typescript-eslint/no-explicit-any
-      return new OpenAIChat(fields, configuration) as any as OpenAI;
-    }
-    super(fields ?? {});
-
-    const apiKey = fields?.openAIApiKey ?? process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OpenAI API key not found");
-    }
-
-    this.modelName = fields?.modelName ?? this.modelName;
-    this.modelKwargs = fields?.modelKwargs ?? {};
-    this.batchSize = fields?.batchSize ?? this.batchSize;
-    this.timeout = fields?.timeout;
-
-    this.temperature = fields?.temperature ?? this.temperature;
-    this.maxTokens = fields?.maxTokens ?? this.maxTokens;
-    this.topP = fields?.topP ?? this.topP;
-    this.frequencyPenalty = fields?.frequencyPenalty ?? this.frequencyPenalty;
-    this.presencePenalty = fields?.presencePenalty ?? this.presencePenalty;
-    this.n = fields?.n ?? this.n;
-    this.bestOf = fields?.bestOf ?? this.bestOf;
-    this.logitBias = fields?.logitBias;
-    this.stop = fields?.stop;
-
-    this.streaming = fields?.streaming ?? false;
-
-    if (this.streaming && this.n > 1) {
-      throw new Error("Cannot stream results when n > 1");
-    }
-
-    if (this.streaming && this.bestOf > 1) {
-      throw new Error("Cannot stream results when bestOf > 1");
-    }
-
-    this.clientConfig = {
-      apiKey,
-      ...configuration,
-    };
-  }
-
-  /**
-   * Get the parameters used to invoke the model
-   */
-  invocationParams(): CreateCompletionRequest & Kwargs {
-    return {
-      model: this.modelName,
-      temperature: this.temperature,
-      max_tokens: this.maxTokens,
-      top_p: this.topP,
-      frequency_penalty: this.frequencyPenalty,
-      presence_penalty: this.presencePenalty,
-      n: this.n,
-      best_of: this.bestOf,
-      logit_bias: this.logitBias,
-      stop: this.stop,
-      stream: this.streaming,
-      ...this.modelKwargs,
-    };
-  }
-
-  _identifyingParams() {
-    return {
-      model_name: this.modelName,
-      ...this.invocationParams(),
-      ...this.clientConfig,
-    };
-  }
-
-  /**
-   * Get the identifying parameters for the model
-   */
-  identifyingParams() {
-    return this._identifyingParams();
-  }
-
-  /**
-   * Call out to OpenAI's endpoint with k unique prompts
-   *
-   * @param prompts - The prompts to pass into the model.
-   * @param [stop] - Optional list of stop words to use when generating.
-   *
-   * @returns The full LLM output.
-   *
-   * @example
-   * ```ts
-   * import { OpenAI } from "langchain/llms";
-   * const openai = new OpenAI();
-   * const response = await openai.generate(["Tell me a joke."]);
-   * ```
-   */
-  async _generate(prompts: string[], stop?: string[]): Promise<LLMResult> {
-    const subPrompts = chunkArray(prompts, this.batchSize);
-    const choices: CreateCompletionResponseChoicesInner[] = [];
-    const tokenUsage: TokenUsage = {};
-
-    if (this.stop && stop) {
-      throw new Error("Stop found in input and default params");
-    }
-
-    const params = this.invocationParams();
-    params.stop = stop ?? params.stop;
-
-    if (params.max_tokens === -1) {
-      if (prompts.length !== 1) {
-        throw new Error(
-          "max_tokens set to -1 not supported for multiple inputs"
-        );
-      }
-      params.max_tokens = await calculateMaxTokens({
-        prompt: prompts[0],
-        // Cast here to allow for other models that may not fit the union
-        modelName: this.modelName as TiktokenModel,
-      });
-    }
-
-    for (let i = 0; i < subPrompts.length; i += 1) {
-      const data = params.stream
-        ? await new Promise<CreateCompletionResponse>((resolve, reject) => {
-            const choice: CreateCompletionResponseChoicesInner = {};
-            let response: Omit<CreateCompletionResponse, "choices">;
-            let rejected = false;
-            this.completionWithRetry(
-              {
-                ...params,
-                prompt: subPrompts[i],
-              },
-              {
-                responseType: "stream",
-                onmessage: (event) => {
-                  if (event.data?.trim?.() === "[DONE]") {
-                    resolve({
-                      ...response,
-                      choices: [choice],
-                    });
-                  } else {
-                    const message = JSON.parse(event.data) as Omit<
-                      CreateCompletionResponse,
-                      "usage"
-                    >;
-
-                    // on the first message set the response properties
-                    if (!response) {
-                      response = {
-                        id: message.id,
-                        object: message.object,
-                        created: message.created,
-                        model: message.model,
-                      };
-                    }
-
-                    // on all messages, update choice
-                    const part = message.choices[0];
-                    if (part != null) {
-                      choice.text = (choice.text ?? "") + (part.text ?? "");
-                      choice.finish_reason = part.finish_reason;
-                      choice.logprobs = part.logprobs;
-                      // eslint-disable-next-line no-void
-                      void this.callbackManager.handleLLMNewToken(
-                        part.text ?? "",
-                        true
-                      );
-                    }
-                  }
-                },
-              }
-            ).catch((error) => {
-              if (!rejected) {
-                rejected = true;
-                reject(error);
-              }
-            });
-          })
-        : await this.completionWithRetry({
-            ...params,
-            prompt: subPrompts[i],
-          }).then((res) => res.data);
-
-      choices.push(...data.choices);
-
-      const {
-        completion_tokens: completionTokens,
-        prompt_tokens: promptTokens,
-        total_tokens: totalTokens,
-      } = data.usage ?? {};
-
-      if (completionTokens) {
-        tokenUsage.completionTokens =
-          (tokenUsage.completionTokens ?? 0) + completionTokens;
-      }
-
-      if (promptTokens) {
-        tokenUsage.promptTokens = (tokenUsage.promptTokens ?? 0) + promptTokens;
-      }
-
-      if (totalTokens) {
-        tokenUsage.totalTokens = (tokenUsage.totalTokens ?? 0) + totalTokens;
-      }
-    }
-
-    const generations = chunkArray(choices, this.n).map((promptChoices) =>
-      promptChoices.map((choice) => ({
-        text: choice.text ?? "",
-        generationInfo: {
-          finishReason: choice.finish_reason,
-          logprobs: choice.logprobs,
-        },
-      }))
-    );
-    return {
-      generations,
-      llmOutput: { tokenUsage },
-    };
-  }
-
-  /** @ignore */
-  async completionWithRetry(
-    request: CreateCompletionRequest,
-    options?: StreamingAxiosConfiguration
-  ) {
-    if (!this.client) {
-      const clientConfig = new Configuration({
-        ...this.clientConfig,
-        baseOptions: {
-          timeout: this.timeout,
-          ...this.clientConfig.baseOptions,
-          adapter: fetchAdapter,
-        },
-      });
-      this.client = new OpenAIApi(clientConfig);
-    }
-    return this.caller.call(
-      this.client.createCompletion.bind(this.client),
-      request,
-      options
-    );
-  }
-
-  _llmType() {
-    return "openai";
-  }
-}
+export { OpenAI };
 
 /**
  * PromptLayer wrapper to OpenAI
  * @augments OpenAI
  */
 export class PromptLayerOpenAI extends OpenAI {
+  get lc_secrets(): { [key: string]: string } | undefined {
+    return {
+      promptLayerApiKey: "PROMPTLAYER_API_KEY",
+    };
+  }
+
+  lc_serializable = false;
+
   promptLayerApiKey?: string;
 
   plTags?: string[];
+
+  returnPromptLayerId?: boolean;
 
   constructor(
     fields?: ConstructorParameters<typeof OpenAI>[0] & {
       promptLayerApiKey?: string;
       plTags?: string[];
+      returnPromptLayerId?: boolean;
     }
   ) {
     super(fields);
 
     this.plTags = fields?.plTags ?? [];
     this.promptLayerApiKey =
-      fields?.promptLayerApiKey ?? process.env.PROMPTLAYER_API_KEY;
+      fields?.promptLayerApiKey ??
+      getEnvironmentVariable("PROMPTLAYER_API_KEY");
 
+    this.returnPromptLayerId = fields?.returnPromptLayerId;
     if (!this.promptLayerApiKey) {
       throw new Error("Missing PromptLayer API key");
     }
   }
 
-  async completionWithRetry(
-    request: CreateCompletionRequest,
-    options?: StreamingAxiosConfiguration
-  ) {
-    if (request.stream) {
-      return super.completionWithRetry(request, options);
+  async _generate(
+    prompts: string[],
+    options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): Promise<LLMResult> {
+    const requestStartTime = Date.now();
+    const generations = await super._generate(prompts, options, runManager);
+
+    for (let i = 0; i < generations.generations.length; i += 1) {
+      const requestEndTime = Date.now();
+      const parsedResp = {
+        text: generations.generations[i][0].text,
+        llm_output: generations.llmOutput,
+      };
+
+      const promptLayerRespBody = await promptLayerTrackRequest(
+        this.caller,
+        "langchain.PromptLayerOpenAI",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { ...this._identifyingParams(), prompt: prompts[i] } as any,
+        this.plTags,
+        parsedResp,
+        requestStartTime,
+        requestEndTime,
+        this.promptLayerApiKey
+      );
+
+      let promptLayerRequestId;
+      if (this.returnPromptLayerId === true) {
+        if (promptLayerRespBody && promptLayerRespBody.success === true) {
+          promptLayerRequestId = promptLayerRespBody.request_id;
+        }
+
+        generations.generations[i][0].generationInfo = {
+          ...generations.generations[i][0].generationInfo,
+          promptLayerRequestId,
+        };
+      }
     }
 
-    const requestStartTime = Date.now();
-    const response = await super.completionWithRetry(request);
-    const requestEndTime = Date.now();
-
-    // https://github.com/MagnivOrg/promptlayer-js-helper
-    await this.caller.call(fetch, "https://api.promptlayer.com/track-request", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        function_name: "openai.Completion.create",
-        args: [],
-        kwargs: { engine: request.model, prompt: request.prompt },
-        tags: this.plTags ?? [],
-        request_response: response.data,
-        request_start_time: Math.floor(requestStartTime / 1000),
-        request_end_time: Math.floor(requestEndTime / 1000),
-        api_key: process.env.PROMPTLAYER_API_KEY,
-      }),
-    });
-
-    return response;
+    return generations;
   }
 }
+
+export { OpenAIChat, PromptLayerOpenAIChat } from "./openai-chat.js";

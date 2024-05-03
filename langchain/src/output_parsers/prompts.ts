@@ -1,5 +1,4 @@
-/* eslint-disable tree-shaking/no-side-effects-in-initialization */
-import { PromptTemplate } from "../prompts/prompt.js";
+import { PromptTemplate } from "@langchain/core/prompts";
 
 export const NAIVE_FIX_TEMPLATE = `Instructions:
 --------------

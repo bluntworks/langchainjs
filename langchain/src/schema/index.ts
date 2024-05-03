@@ -1,183 +1,112 @@
-import { Document } from "../document.js";
+import type { OpenAIClient } from "@langchain/openai";
+import {
+  BaseMessage,
+  HumanMessage,
+  AIMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
 
-export type Example = Record<string, string>;
+/* #__PURE__ */ console.warn(
+  [
+    `[WARNING]: Importing from "langchain/schema" is deprecated.`,
+    ``,
+    `Instead, please import from the appropriate entrypoint in "@langchain/core" or "langchain".`,
+    ``,
+    `This will be mandatory after the next "langchain" minor version bump to 0.2.`,
+  ].join("\n")
+);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type InputValues = Record<string, any>;
+export {
+  type AgentAction,
+  type AgentFinish,
+  type AgentStep,
+} from "@langchain/core/agents";
 
-export type PartialValues = Record<
-  string,
-  string | (() => Promise<string>) | (() => string)
->;
+export { RUN_KEY } from "@langchain/core/outputs";
 
-/**
- * Output of a single generation.
- */
-export interface Generation {
-  /**
-   * Generated text output
-   */
-  text: string;
-  /**
-   * Raw generation info response from the provider.
-   * May include things like reason for finishing (e.g. in {@link OpenAI})
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  generationInfo?: Record<string, any>;
-}
+export { type Example } from "@langchain/core/prompts";
 
-/**
- * Contains all relevant information returned by an LLM.
- */
-export type LLMResult = {
-  /**
-   * List of the things generated. Each input could have multiple {@link Generation | generations}, hence this is a list of lists.
-   */
-  generations: Generation[][];
-  /**
-   * Dictionary of arbitrary LLM-provider specific output.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  llmOutput?: Record<string, any>;
-};
-export type MessageType = "human" | "ai" | "generic" | "system";
-
-export abstract class BaseChatMessage {
-  /** The text of the message. */
-  text: string;
-
-  /** The type of the message. */
-  abstract _getType(): MessageType;
-
-  constructor(text: string) {
-    this.text = text;
-  }
-}
-
-export class HumanChatMessage extends BaseChatMessage {
-  _getType(): MessageType {
-    return "human";
-  }
-}
-
-export class AIChatMessage extends BaseChatMessage {
-  _getType(): MessageType {
-    return "ai";
-  }
-}
-
-export class SystemChatMessage extends BaseChatMessage {
-  _getType(): MessageType {
-    return "system";
-  }
-}
-
-export class ChatMessage extends BaseChatMessage {
-  role: string;
-
-  constructor(text: string, role: string) {
-    super(text);
-    this.role = role;
-  }
-
-  _getType(): MessageType {
-    return "generic";
-  }
-}
-
-export interface ChatGeneration extends Generation {
-  message: BaseChatMessage;
-}
-
-export interface ChatResult {
-  generations: ChatGeneration[];
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  llmOutput?: Record<string, any>;
-}
-
-/**
- * Base PromptValue class. All prompt values should extend this class.
- */
-export abstract class BasePromptValue {
-  abstract toString(): string;
-
-  abstract toChatMessages(): BaseChatMessage[];
-}
-
-export type AgentAction = {
-  tool: string;
-  toolInput: string;
-  log: string;
+// TODO: Deprecate when SDK typing is updated
+export type OpenAIToolCall = OpenAIClient.ChatCompletionMessageToolCall & {
+  index: number;
 };
 
-export type AgentFinish = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  returnValues: Record<string, any>;
-  log: string;
-};
-export type AgentStep = {
-  action: AgentAction;
-  observation: string;
-};
+export {
+  type StoredMessageData,
+  type StoredMessage,
+  type StoredGeneration,
+  type MessageType,
+  type MessageContent,
+  type BaseMessageFields,
+  type ChatMessageFieldsWithRole,
+  type FunctionMessageFieldsWithName,
+  type ToolMessageFieldsWithToolCallId,
+  BaseMessageChunk,
+  HumanMessageChunk,
+  AIMessageChunk,
+  SystemMessageChunk,
+  FunctionMessage,
+  FunctionMessageChunk,
+  ToolMessage,
+  ToolMessageChunk,
+  ChatMessage,
+  type BaseMessageLike,
+  mapStoredMessageToChatMessage,
+  ChatMessageChunk,
+  coerceMessageLikeToMessage,
+  isBaseMessage,
+  isBaseMessageChunk,
+} from "@langchain/core/messages";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ChainValues = Record<string, any>;
+export { BaseMessage, HumanMessage, AIMessage, SystemMessage };
 
 /**
- * Base Index class. All indexes should extend this class.
+ * @deprecated
+ * Use {@link BaseMessage} instead.
  */
-export abstract class BaseRetriever {
-  abstract getRelevantDocuments(query: string): Promise<Document[]>;
-}
-/** Class to parse the output of an LLM call.
+export const BaseChatMessage = BaseMessage;
+
+/**
+ * @deprecated
+ * Use {@link HumanMessage} instead.
  */
-export abstract class BaseOutputParser {
-  /**
-   * Parse the output of an LLM call.
-   *
-   * @param text - LLM output to parse.
-   * @returns Parsed output.
-   */
-  abstract parse(text: string): Promise<unknown>;
+export const HumanChatMessage = HumanMessage;
 
-  async parseWithPrompt(
-    text: string,
-    _prompt: BasePromptValue
-  ): Promise<unknown> {
-    return this.parse(text);
-  }
+/**
+ * @deprecated
+ * Use {@link AIMessage} instead.
+ */
+export const AIChatMessage = AIMessage;
 
-  /**
-   * Return a string describing the format of the output.
-   * @returns Format instructions.
-   * @example
-   * ```json
-   * {
-   *  "foo": "bar"
-   * }
-   * ```
-   */
-  abstract getFormatInstructions(): string;
+/**
+ * @deprecated
+ * Use {@link SystemMessage} instead.
+ */
+export const SystemChatMessage = SystemMessage;
 
-  /**
-   * Return the string type key uniquely identifying this class of parser
-   */
-  _type(): string {
-    throw new Error("_type not implemented");
-  }
-}
+export {
+  type Generation,
+  type GenerationChunkFields,
+  GenerationChunk,
+  type ChatResult,
+  type ChatGeneration,
+  ChatGenerationChunk,
+  type LLMResult,
+} from "@langchain/core/outputs";
 
-export class OutputParserException extends Error {
-  constructor(message: string) {
-    super(message);
-  }
-}
+export { BasePromptValue } from "@langchain/core/prompt_values";
 
-export abstract class BaseChatMessageHistory {
-  public abstract get messages(): BaseChatMessage[];
+export {
+  type InputValues,
+  type PartialValues,
+  type ChainValues,
+} from "@langchain/core/utils/types";
 
-  public abstract addUserMessage(message: string): void;
+export {
+  BaseChatMessageHistory,
+  BaseListChatMessageHistory,
+} from "@langchain/core/chat_history";
 
-  public abstract addAIChatMessage(message: string): void;
-}
+export { BaseCache } from "@langchain/core/caches";
+
+export { Docstore } from "@langchain/community/stores/doc/base";

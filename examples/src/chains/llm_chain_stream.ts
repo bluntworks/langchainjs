@@ -1,24 +1,26 @@
-import { OpenAI } from "langchain/llms";
-import { PromptTemplate } from "langchain/prompts";
+import { OpenAI } from "@langchain/openai";
 import { LLMChain } from "langchain/chains";
-import { CallbackManager } from "langchain/callbacks";
+import { PromptTemplate } from "@langchain/core/prompts";
 
-export const run = async () => {
-  const manager = CallbackManager.fromHandlers({
-    async handleLLMNewToken(token: string) {
-      console.log({ token });
-    },
-  });
+// Create a new LLMChain from a PromptTemplate and an LLM in streaming mode.
+const model = new OpenAI({ temperature: 0.9, streaming: true });
+const prompt = PromptTemplate.fromTemplate(
+  "What is a good name for a company that makes {product}?"
+);
+const chain = new LLMChain({ llm: model, prompt });
 
-  const model = new OpenAI({
-    temperature: 0.9,
-    streaming: true,
-    callbackManager: manager,
-  });
-
-  const template = "What is a good name for a company that makes {product}?";
-  const prompt = new PromptTemplate({ template, inputVariables: ["product"] });
-  const chain = new LLMChain({ llm: model, prompt });
-  const res = await chain.call({ product: "colorful socks" });
-  console.log({ res });
-};
+// Call the chain with the inputs and a callback for the streamed tokens
+const res = await chain.invoke(
+  { product: "colorful socks" },
+  {
+    callbacks: [
+      {
+        handleLLMNewToken(token: string) {
+          process.stdout.write(token);
+        },
+      },
+    ],
+  }
+);
+console.log({ res });
+// { res: { text: '\n\nKaleidoscope Socks' } }

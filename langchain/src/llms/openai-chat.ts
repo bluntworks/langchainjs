@@ -1,339 +1,101 @@
-import {
-  Configuration,
-  OpenAIApi,
-  ChatCompletionRequestMessage,
-  CreateChatCompletionRequest,
-  ConfigurationParameters,
-  ChatCompletionResponseMessageRoleEnum,
-  CreateChatCompletionResponse,
-} from "openai";
-import type { StreamingAxiosConfiguration } from "../util/axios-fetch-adapter.js";
-import fetchAdapter from "../util/axios-fetch-adapter.js";
-import { BaseLLMParams, LLM } from "./base.js";
+import { OpenAIChat } from "@langchain/openai";
 
-interface ModelParams {
-  /** Sampling temperature to use, between 0 and 2, defaults to 1 */
-  temperature: number;
+import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
+import type { Generation, LLMResult } from "@langchain/core/outputs";
+import { getEnvironmentVariable } from "@langchain/core/utils/env";
+import { promptLayerTrackRequest } from "../util/prompt-layer.js";
 
-  /** Total probability mass of tokens to consider at each step, between 0 and 1, defaults to 1 */
-  topP: number;
+export {
+  type AzureOpenAIInput,
+  type OpenAICallOptions,
+  type OpenAIInput,
+  type OpenAIChatCallOptions,
+} from "@langchain/openai";
 
-  /** Penalizes repeated tokens according to frequency */
-  frequencyPenalty: number;
-
-  /** Penalizes repeated tokens */
-  presencePenalty: number;
-
-  /** Number of chat completions to generate for each prompt */
-  n: number;
-
-  /** Dictionary used to adjust the probability of specific tokens being generated */
-  logitBias?: Record<string, number>;
-
-  /** Whether to stream the results or not */
-  streaming: boolean;
-}
+export { OpenAIChat };
 
 /**
- * Input to OpenAI class.
- * @augments ModelParams
+ * PromptLayer wrapper to OpenAIChat
+ * @deprecated
  */
-interface OpenAIInput extends ModelParams {
-  /** Model name to use */
-  modelName: string;
+export class PromptLayerOpenAIChat extends OpenAIChat {
+  get lc_secrets(): { [key: string]: string } | undefined {
+    return {
+      promptLayerApiKey: "PROMPTLAYER_API_KEY",
+    };
+  }
 
-  /** ChatGPT messages to pass as a prefix to the prompt */
-  prefixMessages?: ChatCompletionRequestMessage[];
+  lc_serializable = false;
 
-  /** Holds any additional parameters that are valid to pass to {@link
-   * https://platform.openai.com/docs/api-reference/completions/create |
-   * `openai.create`} that are not explicitly specified on this class.
-   */
-  modelKwargs?: Kwargs;
+  promptLayerApiKey?: string;
 
-  /** List of stop words to use when generating */
-  stop?: string[];
+  plTags?: string[];
 
-  /**
-   * Timeout to use when making requests to OpenAI.
-   */
-  timeout?: number;
-
-  /**
-   * Maximum number of tokens to generate in the completion.  If not specified,
-   * defaults to the maximum number of tokens allowed by the model.
-   */
-  maxTokens?: number;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Kwargs = Record<string, any>;
-
-/**
- * Wrapper around OpenAI large language models that use the Chat endpoint.
- *
- * To use you should have the `openai` package installed, with the
- * `OPENAI_API_KEY` environment variable set.
- *
- * @remarks
- * Any parameters that are valid to be passed to {@link
- * https://platform.openai.com/docs/api-reference/chat/create |
- * `openai.createCompletion`} can be passed through {@link modelKwargs}, even
- * if not explicitly available on this class.
- *
- * @augments BaseLLM
- * @augments OpenAIInput
- */
-export class OpenAIChat extends LLM implements OpenAIInput {
-  temperature = 1;
-
-  topP = 1;
-
-  frequencyPenalty = 0;
-
-  presencePenalty = 0;
-
-  n = 1;
-
-  logitBias?: Record<string, number>;
-
-  maxTokens?: number;
-
-  modelName = "gpt-3.5-turbo";
-
-  prefixMessages?: ChatCompletionRequestMessage[];
-
-  modelKwargs?: Kwargs;
-
-  timeout?: number;
-
-  stop?: string[];
-
-  streaming = false;
-
-  private client: OpenAIApi;
-
-  private clientConfig: ConfigurationParameters;
+  returnPromptLayerId?: boolean;
 
   constructor(
-    fields?: Partial<OpenAIInput> &
-      BaseLLMParams & {
-        openAIApiKey?: string;
-      },
-    configuration?: ConfigurationParameters
+    fields?: ConstructorParameters<typeof OpenAIChat>[0] & {
+      promptLayerApiKey?: string;
+      plTags?: string[];
+      returnPromptLayerId?: boolean;
+    }
   ) {
-    super(fields ?? {});
+    super(fields);
 
-    const apiKey = fields?.openAIApiKey ?? process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OpenAI API key not found");
+    this.plTags = fields?.plTags ?? [];
+    this.returnPromptLayerId = fields?.returnPromptLayerId ?? false;
+    this.promptLayerApiKey =
+      fields?.promptLayerApiKey ??
+      getEnvironmentVariable("PROMPTLAYER_API_KEY");
+
+    if (!this.promptLayerApiKey) {
+      throw new Error("Missing PromptLayer API key");
     }
-
-    this.modelName = fields?.modelName ?? this.modelName;
-    this.prefixMessages = fields?.prefixMessages ?? this.prefixMessages;
-    this.modelKwargs = fields?.modelKwargs ?? {};
-    this.timeout = fields?.timeout;
-
-    this.temperature = fields?.temperature ?? this.temperature;
-    this.topP = fields?.topP ?? this.topP;
-    this.frequencyPenalty = fields?.frequencyPenalty ?? this.frequencyPenalty;
-    this.presencePenalty = fields?.presencePenalty ?? this.presencePenalty;
-    this.n = fields?.n ?? this.n;
-    this.logitBias = fields?.logitBias;
-    this.maxTokens = fields?.maxTokens;
-    this.stop = fields?.stop;
-
-    this.streaming = fields?.streaming ?? false;
-
-    if (this.streaming && this.n > 1) {
-      throw new Error("Cannot stream results when n > 1");
-    }
-
-    this.clientConfig = {
-      apiKey,
-      ...configuration,
-    };
   }
 
-  /**
-   * Get the parameters used to invoke the model
-   */
-  invocationParams(): Omit<CreateChatCompletionRequest, "messages"> & Kwargs {
-    return {
-      model: this.modelName,
-      temperature: this.temperature,
-      top_p: this.topP,
-      frequency_penalty: this.frequencyPenalty,
-      presence_penalty: this.presencePenalty,
-      n: this.n,
-      logit_bias: this.logitBias,
-      max_tokens: this.maxTokens,
-      stop: this.stop,
-      stream: this.streaming,
-      ...this.modelKwargs,
-    };
-  }
+  async _generate(
+    prompts: string[],
+    options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): Promise<LLMResult> {
+    let choice: Generation[];
 
-  _identifyingParams() {
-    return {
-      model_name: this.modelName,
-      ...this.invocationParams(),
-      ...this.clientConfig,
-    };
-  }
+    const generations: Generation[][] = await Promise.all(
+      prompts.map(async (prompt) => {
+        const requestStartTime = Date.now();
+        const text = await this._call(prompt, options, runManager);
+        const requestEndTime = Date.now();
 
-  /**
-   * Get the identifying parameters for the model
-   */
-  identifyingParams() {
-    return {
-      model_name: this.modelName,
-      ...this.invocationParams(),
-      ...this.clientConfig,
-    };
-  }
+        choice = [{ text }];
 
-  private formatMessages(prompt: string): ChatCompletionRequestMessage[] {
-    const message: ChatCompletionRequestMessage = {
-      role: "user",
-      content: prompt,
-    };
-    return this.prefixMessages ? [...this.prefixMessages, message] : [message];
-  }
+        const parsedResp = {
+          text,
+        };
+        const promptLayerRespBody = await promptLayerTrackRequest(
+          this.caller,
+          "langchain.PromptLayerOpenAIChat",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          { ...this._identifyingParams(), prompt } as any,
+          this.plTags,
+          parsedResp,
+          requestStartTime,
+          requestEndTime,
+          this.promptLayerApiKey
+        );
 
-  /**
-   * Call out to OpenAI's endpoint with k unique prompts
-   *
-   * @param prompt - The prompt to pass into the model.
-   * @param [stop] - Optional list of stop words to use when generating.
-   *
-   * @returns The full LLM output.
-   *
-   * @example
-   * ```ts
-   * import { OpenAI } from "langchain/llms";
-   * const openai = new OpenAI();
-   * const response = await openai.generate(["Tell me a joke."]);
-   * ```
-   */
-  async _call(prompt: string, stop?: string[]): Promise<string> {
-    if (this.stop && stop) {
-      throw new Error("Stop found in input and default params");
-    }
+        if (
+          this.returnPromptLayerId === true &&
+          promptLayerRespBody.success === true
+        ) {
+          choice[0].generationInfo = {
+            promptLayerRequestId: promptLayerRespBody.request_id,
+          };
+        }
 
-    const params = this.invocationParams();
-    params.stop = stop ?? params.stop;
-
-    const data = params.stream
-      ? await new Promise<CreateChatCompletionResponse>((resolve, reject) => {
-          let response: CreateChatCompletionResponse;
-          let rejected = false;
-          this.completionWithRetry(
-            {
-              ...params,
-              messages: this.formatMessages(prompt),
-            },
-            {
-              responseType: "stream",
-              onmessage: (event) => {
-                if (event.data?.trim?.() === "[DONE]") {
-                  resolve(response);
-                } else {
-                  const message = JSON.parse(event.data) as {
-                    id: string;
-                    object: string;
-                    created: number;
-                    model: string;
-                    choices: Array<{
-                      index: number;
-                      finish_reason: string | null;
-                      delta: { content?: string; role?: string };
-                    }>;
-                  };
-
-                  // on the first message set the response properties
-                  if (!response) {
-                    response = {
-                      id: message.id,
-                      object: message.object,
-                      created: message.created,
-                      model: message.model,
-                      choices: [],
-                    };
-                  }
-
-                  // on all messages, update choice
-                  const part = message.choices[0];
-                  if (part != null) {
-                    let choice = response.choices.find(
-                      (c) => c.index === part.index
-                    );
-
-                    if (!choice) {
-                      choice = {
-                        index: part.index,
-                        finish_reason: part.finish_reason ?? undefined,
-                      };
-                      response.choices.push(choice);
-                    }
-
-                    if (!choice.message) {
-                      choice.message = {
-                        role: part.delta
-                          ?.role as ChatCompletionResponseMessageRoleEnum,
-                        content: part.delta?.content ?? "",
-                      };
-                    }
-
-                    choice.message.content += part.delta?.content ?? "";
-                    // eslint-disable-next-line no-void
-                    void this.callbackManager.handleLLMNewToken(
-                      part.delta?.content ?? "",
-                      true
-                    );
-                  }
-                }
-              },
-            }
-          ).catch((error) => {
-            if (!rejected) {
-              rejected = true;
-              reject(error);
-            }
-          });
-        })
-      : await this.completionWithRetry({
-          ...params,
-          messages: this.formatMessages(prompt),
-        }).then((res) => res.data);
-
-    return data.choices[0].message?.content ?? "";
-  }
-
-  /** @ignore */
-  async completionWithRetry(
-    request: CreateChatCompletionRequest,
-    options?: StreamingAxiosConfiguration
-  ) {
-    if (!this.client) {
-      const clientConfig = new Configuration({
-        ...this.clientConfig,
-        baseOptions: {
-          timeout: this.timeout,
-          ...this.clientConfig.baseOptions,
-          adapter: fetchAdapter,
-        },
-      });
-      this.client = new OpenAIApi(clientConfig);
-    }
-    return this.caller.call(
-      this.client.createChatCompletion.bind(this.client),
-      request,
-      options
+        return choice;
+      })
     );
-  }
 
-  _llmType() {
-    return "openai";
+    return { generations };
   }
 }

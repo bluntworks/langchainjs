@@ -1,91 +1,166 @@
+import type { BaseLanguageModelInterface } from "@langchain/core/language_models/base";
+import { BasePromptTemplate } from "@langchain/core/prompts";
 import { LLMChain } from "../llm_chain.js";
-import { BasePromptTemplate } from "../../prompts/index.js";
 import {
   StuffDocumentsChain,
   MapReduceDocumentsChain,
+  RefineDocumentsChain,
+  MapReduceDocumentsChainInput,
 } from "../combine_docs_chain.js";
-import { QA_PROMPT_SELECTOR, DEFAULT_QA_PROMPT } from "./stuff_prompts.js";
+import { QA_PROMPT_SELECTOR } from "./stuff_prompts.js";
 import {
-  COMBINE_PROMPT,
-  DEFAULT_COMBINE_QA_PROMPT,
   COMBINE_PROMPT_SELECTOR,
   COMBINE_QA_PROMPT_SELECTOR,
 } from "./map_reduce_prompts.js";
-import { BaseLanguageModel } from "../../base_language/index.js";
+import {
+  QUESTION_PROMPT_SELECTOR,
+  REFINE_PROMPT_SELECTOR,
+} from "./refine_prompts.js";
 
-interface qaChainParams {
-  prompt?: BasePromptTemplate;
-  combineMapPrompt?: BasePromptTemplate;
-  combinePrompt?: BasePromptTemplate;
-  type?: string;
-}
+/**
+ * Represents the parameters for creating a QAChain. It can be of three
+ * types: "stuff", "map_reduce", or "refine".
+ */
+export type QAChainParams =
+  | ({
+      type?: "stuff";
+    } & StuffQAChainParams)
+  | ({
+      type?: "map_reduce";
+    } & MapReduceQAChainParams)
+  | ({
+      type?: "refine";
+    } & RefineQAChainParams);
+
 export const loadQAChain = (
-  llm: BaseLanguageModel,
-  params: qaChainParams = {}
+  llm: BaseLanguageModelInterface,
+  params: QAChainParams = { type: "stuff" }
 ) => {
-  const {
-    prompt = DEFAULT_QA_PROMPT,
-    combineMapPrompt = DEFAULT_COMBINE_QA_PROMPT,
-    combinePrompt = COMBINE_PROMPT,
-    type = "stuff",
-  } = params;
+  const { type } = params;
   if (type === "stuff") {
-    const llmChain = new LLMChain({ prompt, llm });
-    const chain = new StuffDocumentsChain({ llmChain });
-    return chain;
+    return loadQAStuffChain(llm, params);
   }
   if (type === "map_reduce") {
-    const llmChain = new LLMChain({ prompt: combineMapPrompt, llm });
-    const combineLLMChain = new LLMChain({ prompt: combinePrompt, llm });
-    const combineDocumentChain = new StuffDocumentsChain({
-      llmChain: combineLLMChain,
-      documentVariableName: "summaries",
-    });
-    const chain = new MapReduceDocumentsChain({
-      llmChain,
-      combineDocumentChain,
-    });
-    return chain;
+    return loadQAMapReduceChain(llm, params);
+  }
+  if (type === "refine") {
+    return loadQARefineChain(llm, params);
   }
   throw new Error(`Invalid _type: ${type}`);
 };
 
-interface StuffQAChainParams {
+/**
+ * Represents the parameters for creating a StuffQAChain.
+ */
+export interface StuffQAChainParams {
   prompt?: BasePromptTemplate;
+  verbose?: boolean;
 }
 
-export const loadQAStuffChain = (
-  llm: BaseLanguageModel,
+/**
+ * Loads a StuffQAChain based on the provided parameters. It takes an LLM
+ * instance and StuffQAChainParams as parameters.
+ * @param llm An instance of BaseLanguageModel.
+ * @param params Parameters for creating a StuffQAChain.
+ * @returns A StuffQAChain instance.
+ */
+export function loadQAStuffChain(
+  llm: BaseLanguageModelInterface,
   params: StuffQAChainParams = {}
-) => {
-  const { prompt = QA_PROMPT_SELECTOR.getPrompt(llm) } = params;
-  const llmChain = new LLMChain({ prompt, llm });
-  const chain = new StuffDocumentsChain({ llmChain });
+) {
+  const { prompt = QA_PROMPT_SELECTOR.getPrompt(llm), verbose } = params;
+  const llmChain = new LLMChain({ prompt, llm, verbose });
+  const chain = new StuffDocumentsChain({ llmChain, verbose });
   return chain;
-};
+}
 
-interface MapReduceQAChainParams {
+/**
+ * Represents the parameters for creating a MapReduceQAChain.
+ */
+export interface MapReduceQAChainParams {
+  returnIntermediateSteps?: MapReduceDocumentsChainInput["returnIntermediateSteps"];
   combineMapPrompt?: BasePromptTemplate;
   combinePrompt?: BasePromptTemplate;
+  combineLLM?: BaseLanguageModelInterface;
+  verbose?: boolean;
 }
 
-export const loadQAMapReduceChain = (
-  llm: BaseLanguageModel,
+/**
+ * Loads a MapReduceQAChain based on the provided parameters. It takes an
+ * LLM instance and MapReduceQAChainParams as parameters.
+ * @param llm An instance of BaseLanguageModel.
+ * @param params Parameters for creating a MapReduceQAChain.
+ * @returns A MapReduceQAChain instance.
+ */
+export function loadQAMapReduceChain(
+  llm: BaseLanguageModelInterface,
   params: MapReduceQAChainParams = {}
-) => {
+) {
   const {
     combineMapPrompt = COMBINE_QA_PROMPT_SELECTOR.getPrompt(llm),
     combinePrompt = COMBINE_PROMPT_SELECTOR.getPrompt(llm),
+    verbose,
+    combineLLM,
+    returnIntermediateSteps,
   } = params;
-  const llmChain = new LLMChain({ prompt: combineMapPrompt, llm });
-  const combineLLMChain = new LLMChain({ prompt: combinePrompt, llm });
+  const llmChain = new LLMChain({ prompt: combineMapPrompt, llm, verbose });
+  const combineLLMChain = new LLMChain({
+    prompt: combinePrompt,
+    llm: combineLLM ?? llm,
+    verbose,
+  });
   const combineDocumentChain = new StuffDocumentsChain({
     llmChain: combineLLMChain,
     documentVariableName: "summaries",
+    verbose,
   });
   const chain = new MapReduceDocumentsChain({
     llmChain,
     combineDocumentChain,
+    returnIntermediateSteps,
+    verbose,
   });
   return chain;
-};
+}
+
+/**
+ * Represents the parameters for creating a RefineQAChain.
+ */
+export interface RefineQAChainParams {
+  questionPrompt?: BasePromptTemplate;
+  refinePrompt?: BasePromptTemplate;
+  refineLLM?: BaseLanguageModelInterface;
+  verbose?: boolean;
+}
+
+/**
+ * Loads a RefineQAChain based on the provided parameters. It takes an LLM
+ * instance and RefineQAChainParams as parameters.
+ * @param llm An instance of BaseLanguageModel.
+ * @param params Parameters for creating a RefineQAChain.
+ * @returns A RefineQAChain instance.
+ */
+export function loadQARefineChain(
+  llm: BaseLanguageModelInterface,
+  params: RefineQAChainParams = {}
+) {
+  const {
+    questionPrompt = QUESTION_PROMPT_SELECTOR.getPrompt(llm),
+    refinePrompt = REFINE_PROMPT_SELECTOR.getPrompt(llm),
+    refineLLM,
+    verbose,
+  } = params;
+  const llmChain = new LLMChain({ prompt: questionPrompt, llm, verbose });
+  const refineLLMChain = new LLMChain({
+    prompt: refinePrompt,
+    llm: refineLLM ?? llm,
+    verbose,
+  });
+
+  const chain = new RefineDocumentsChain({
+    llmChain,
+    refineLLMChain,
+    verbose,
+  });
+  return chain;
+}

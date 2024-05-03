@@ -1,4 +1,4 @@
-import { ChatGPTPluginRetriever } from "langchain/retrievers";
+import { ChatGPTPluginRetriever } from "langchain/retrievers/remote";
 
 export const run = async () => {
   const retriever = new ChatGPTPluginRetriever({
@@ -8,7 +8,7 @@ export const run = async () => {
     },
   });
 
-  const docs = await retriever.getRelevantDocuments("hello world");
+  const docs = await retriever.invoke("hello world");
 
   console.log(docs);
 };

@@ -1,41 +1,135 @@
-import { OpenAI } from "langchain/llms";
-import { ZeroShotAgent, AgentExecutor } from "langchain/agents";
-import { SerpAPI, Calculator } from "langchain/tools";
-import { LLMChain } from "langchain/chains";
+import { ChatOpenAI } from "@langchain/openai";
+import { RunnableSequence } from "@langchain/core/runnables";
+import { AgentExecutor, type AgentStep } from "langchain/agents";
+import { formatToOpenAIFunctionMessages } from "langchain/agents/format_scratchpad";
+import {
+  ChatPromptTemplate,
+  MessagesPlaceholder,
+} from "@langchain/core/prompts";
+import { convertToOpenAIFunction } from "@langchain/core/utils/function_calling";
+import { OpenAIFunctionsAgentOutputParser } from "langchain/agents/openai/output_parser";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { DynamicTool } from "@langchain/core/tools";
 
-export const run = async () => {
-  const model = new OpenAI({ temperature: 0 });
-  const tools = [new SerpAPI(), new Calculator()];
+/**
+ * Define your chat model to use.
+ */
+const model = new ChatOpenAI({ model: "gpt-3.5-turbo", temperature: 0 });
 
-  const prefix = `Answer the following questions as best you can, but speaking as a pirate might speak. You have access to the following tools:`;
-  const suffix = `Begin! Remember to speak as a pirate when giving your final answer. Use lots of "Args"
+const customTool = new DynamicTool({
+  name: "get_word_length",
+  description: "Returns the length of a word.",
+  func: async (input: string) => input.length.toString(),
+});
 
-Question: {input}
-{agent_scratchpad}`;
+/** Define your list of tools. */
+const tools = [customTool];
 
-  const createPromptArgs = {
-    suffix,
-    prefix,
-    inputVariables: ["input", "agent_scratchpad"],
-  };
+/**
+ * Define your prompt for the agent to follow
+ * Here we're using `MessagesPlaceholder` to contain our agent scratchpad
+ * This is important as later we'll use a util function which formats the agent
+ * steps into a list of `BaseMessages` which can be passed into `MessagesPlaceholder`
+ */
+const prompt = ChatPromptTemplate.fromMessages([
+  ["system", "You are very powerful assistant, but don't know current events"],
+  ["human", "{input}"],
+  new MessagesPlaceholder("agent_scratchpad"),
+]);
 
-  const prompt = ZeroShotAgent.createPrompt(tools, createPromptArgs);
+/**
+ * Bind the tools to the LLM.
+ * Here we're using the `convertToOpenAIFunction` util function
+ * to format our tools into the proper schema for OpenAI functions.
+ */
+const modelWithFunctions = model.bind({
+  functions: tools.map((tool) => convertToOpenAIFunction(tool)),
+});
 
-  console.log(prompt.template);
+/**
+ * Construct the runnable agent.
+ *
+ * We're using a `RunnableSequence` which takes two inputs:
+ * - input --> the users input
+ * - agent_scratchpad --> the previous agent steps
+ *
+ * We're using the `formatForOpenAIFunctions` util function to format the agent
+ * steps into a list of `BaseMessages` which can be passed into `MessagesPlaceholder`
+ */
+const runnableAgent = RunnableSequence.from([
+  {
+    input: (i: { input: string; steps: AgentStep[] }) => i.input,
+    agent_scratchpad: (i: { input: string; steps: AgentStep[] }) =>
+      formatToOpenAIFunctionMessages(i.steps),
+  },
+  prompt,
+  modelWithFunctions,
+  new OpenAIFunctionsAgentOutputParser(),
+]);
+/** Pass the runnable along with the tools to create the Agent Executor */
+const executor = AgentExecutor.fromAgentAndTools({
+  agent: runnableAgent,
+  tools,
+});
 
-  const llmChain = new LLMChain({ llm: model, prompt });
-  const agent = new ZeroShotAgent({
-    llmChain,
-    allowedTools: ["search", "calculator"],
-  });
-  const agentExecutor = AgentExecutor.fromAgentAndTools({ agent, tools });
-  console.log("Loaded agent.");
+console.log("Loaded agent executor");
 
-  const input = `Who is Olivia Wilde's boyfriend? What is his current age raised to the 0.23 power?`;
+const input = "How many letters in the word educa?";
+console.log(`Calling agent executor with query: ${input}`);
+const result = await executor.invoke({
+  input,
+});
+console.log(result);
+/*
+  {
+    input: 'How many letters in the word educa?',
+    output: 'There are 5 letters in the word "educa".'
+  }
+*/
 
-  console.log(`Executing with input "${input}"...`);
+const MEMORY_KEY = "chat_history";
+const memoryPrompt = ChatPromptTemplate.fromMessages([
+  [
+    "system",
+    "You are very powerful assistant, but bad at calculating lengths of words.",
+  ],
+  new MessagesPlaceholder(MEMORY_KEY),
+  ["user", "{input}"],
+  new MessagesPlaceholder("agent_scratchpad"),
+]);
 
-  const result = await agentExecutor.call({ input });
+const chatHistory: BaseMessage[] = [];
 
-  console.log(`Got output ${result.output}`);
-};
+const agentWithMemory = RunnableSequence.from([
+  {
+    input: (i) => i.input,
+    agent_scratchpad: (i) => formatToOpenAIFunctionMessages(i.steps),
+    chat_history: (i) => i.chat_history,
+  },
+  memoryPrompt,
+  modelWithFunctions,
+  new OpenAIFunctionsAgentOutputParser(),
+]);
+/** Pass the runnable along with the tools to create the Agent Executor */
+const executorWithMemory = AgentExecutor.fromAgentAndTools({
+  agent: agentWithMemory,
+  tools,
+});
+
+const input1 = "how many letters in the word educa?";
+const result1 = await executorWithMemory.invoke({
+  input: input1,
+  chat_history: chatHistory,
+});
+
+console.log(result1);
+
+chatHistory.push(new HumanMessage(input1));
+chatHistory.push(new AIMessage(result.output));
+
+const result2 = await executorWithMemory.invoke({
+  input: "is that a real English word?",
+  chat_history: chatHistory,
+});
+
+console.log(result2);

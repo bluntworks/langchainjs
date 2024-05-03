@@ -1,8 +1,7 @@
+import type { BaseLanguageModelInterface } from "@langchain/core/language_models/base";
+import type { ToolInterface } from "@langchain/core/tools";
 import type { SerializedAgentT, AgentInput } from "./types.js";
-import { Tool } from "./tools/index.js";
-import { SerializedLLMChain, LLMChain } from "../chains/index.js";
-import { resolveConfigFromFile } from "../util/index.js";
-import { BaseLanguageModel } from "../base_language/index.js";
+import { LLMChain } from "../chains/llm_chain.js";
 
 export const deserializeHelper = async <
   T extends string,
@@ -10,10 +9,14 @@ export const deserializeHelper = async <
   V extends AgentInput,
   Z
 >(
-  llm: BaseLanguageModel | undefined,
-  tools: Tool[] | undefined,
+  llm: BaseLanguageModelInterface | undefined,
+  tools: ToolInterface[] | undefined,
   data: SerializedAgentT<T, U, V>,
-  fromLLMAndTools: (llm: BaseLanguageModel, tools: Tool[], args: U) => Z,
+  fromLLMAndTools: (
+    llm: BaseLanguageModelInterface,
+    tools: ToolInterface[],
+    args: U
+  ) => Z,
   fromConstructor: (args: V) => Z
 ): Promise<Z> => {
   if (data.load_from_llm_and_tools) {
@@ -27,11 +30,10 @@ export const deserializeHelper = async <
 
     return fromLLMAndTools(llm, tools, data);
   }
+  if (!data.llm_chain) {
+    throw new Error("Loading from constructor, llm_chain must be provided.");
+  }
 
-  const serializedLLMChain = await resolveConfigFromFile<
-    "llm_chain",
-    SerializedLLMChain
-  >("llm_chain", data);
-  const llmChain = await LLMChain.deserialize(serializedLLMChain);
+  const llmChain = await LLMChain.deserialize(data.llm_chain);
   return fromConstructor({ ...data, llmChain });
 };

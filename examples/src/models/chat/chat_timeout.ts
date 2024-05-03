@@ -1,16 +1,15 @@
-import { ChatOpenAI } from "langchain/chat_models";
-import { HumanChatMessage } from "langchain/schema";
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage } from "@langchain/core/messages";
 
-export const run = async () => {
-  const chat = new ChatOpenAI(
-    { temperature: 1, timeout: 1000 } // 1s timeout
-  );
+const chat = new ChatOpenAI({ temperature: 1 });
 
-  const response = await chat.call([
-    new HumanChatMessage(
+const response = await chat.invoke(
+  [
+    new HumanMessage(
       "What is a good name for a company that makes colorful socks?"
     ),
-  ]);
-  console.log(response);
-  // AIChatMessage { text: '\n\nRainbow Sox Co.' }
-};
+  ],
+  { timeout: 1000 } // 1s timeout
+);
+console.log(response);
+// AIMessage { text: '\n\nRainbow Sox Co.' }

@@ -1,7 +1,7 @@
-import { Document } from "langchain/document";
 import { TokenTextSplitter } from "langchain/text_splitter";
 import fs from "fs";
 import path from "path";
+import { Document } from "@langchain/core/documents";
 
 export const run = async () => {
   /* Split text */
@@ -18,10 +18,10 @@ export const run = async () => {
     disallowedSpecial: [],
   });
 
-  const output = splitter.createDocuments([text]);
+  const output = await splitter.createDocuments([text]);
   console.log({ output });
 
-  const docOutput = splitter.splitDocuments([
+  const docOutput = await splitter.splitDocuments([
     new Document({ pageContent: text }),
   ]);
 

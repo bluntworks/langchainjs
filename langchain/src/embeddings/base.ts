@@ -1,19 +1,8 @@
-import { AsyncCaller, AsyncCallerParams } from "../util/async_caller.js";
+import { logVersion010MigrationWarning } from "../util/entrypoint_deprecation.js";
 
-export type EmbeddingsParams = AsyncCallerParams;
-
-export abstract class Embeddings {
-  /**
-   * The async caller should be used by subclasses to make any async calls,
-   * which will thus benefit from the concurrency and retry logic.
-   */
-  protected caller: AsyncCaller;
-
-  constructor(params: EmbeddingsParams) {
-    this.caller = new AsyncCaller(params ?? {});
-  }
-
-  abstract embedDocuments(documents: string[]): Promise<number[][]>;
-
-  abstract embedQuery(document: string): Promise<number[]>;
-}
+/* #__PURE__ */ logVersion010MigrationWarning({
+  oldEntrypointName: "embeddings/base",
+  newEntrypointName: "embeddings",
+  newPackageName: "@langchain/core",
+});
+export * from "@langchain/core/embeddings";

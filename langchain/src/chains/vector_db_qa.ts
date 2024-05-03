@@ -1,25 +1,47 @@
-import { BaseChain } from "./base.js";
-import { VectorStore } from "../vectorstores/base.js";
-import { SerializedBaseChain, SerializedVectorDBQAChain } from "./serde.js";
-import { BaseLanguageModel } from "../base_language/index.js";
-
-import { resolveConfigFromFile } from "../util/index.js";
-import { ChainValues } from "../schema/index.js";
+import type { BaseLanguageModelInterface } from "@langchain/core/language_models/base";
+import type { VectorStoreInterface } from "@langchain/core/vectorstores";
+import { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
+import { ChainValues } from "@langchain/core/utils/types";
+import { BaseChain, ChainInputs } from "./base.js";
+import { SerializedVectorDBQAChain } from "./serde.js";
 import { loadQAStuffChain } from "./question_answering/load.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type LoadValues = Record<string, any>;
 
-export interface VectorDBQAChainInput {
-  vectorstore: VectorStore;
-  k: number;
+/**
+ * Interface that extends the `ChainInputs` interface and defines the
+ * input fields required for a VectorDBQAChain. It includes properties
+ * such as `vectorstore`, `combineDocumentsChain`,
+ * `returnSourceDocuments`, `k`, and `inputKey`.
+ *
+ * @deprecated
+ * Switch to {@link https://js.langchain.com/docs/modules/chains/ | createRetrievalChain}
+ * Will be removed in 0.2.0
+ */
+export interface VectorDBQAChainInput extends Omit<ChainInputs, "memory"> {
+  vectorstore: VectorStoreInterface;
   combineDocumentsChain: BaseChain;
-  outputKey: string;
-  inputKey: string;
   returnSourceDocuments?: boolean;
+  k?: number;
+  inputKey?: string;
 }
 
+/**
+ * Class that represents a VectorDBQAChain. It extends the `BaseChain`
+ * class and implements the `VectorDBQAChainInput` interface. It performs
+ * a similarity search using a vector store and combines the search
+ * results using a specified combine documents chain.
+ *
+ * @deprecated
+ * Switch to {@link https://js.langchain.com/docs/modules/chains/ | createRetrievalChain}
+ * Will be removed in 0.2.0
+ */
 export class VectorDBQAChain extends BaseChain implements VectorDBQAChainInput {
+  static lc_name() {
+    return "VectorDBQAChain";
+  }
+
   k = 4;
 
   inputKey = "query";
@@ -28,40 +50,48 @@ export class VectorDBQAChain extends BaseChain implements VectorDBQAChainInput {
     return [this.inputKey];
   }
 
-  outputKey = "result";
+  get outputKeys() {
+    return this.combineDocumentsChain.outputKeys.concat(
+      this.returnSourceDocuments ? ["sourceDocuments"] : []
+    );
+  }
 
-  vectorstore: VectorStore;
+  vectorstore: VectorStoreInterface;
 
   combineDocumentsChain: BaseChain;
 
   returnSourceDocuments = false;
 
-  constructor(fields: {
-    vectorstore: VectorStore;
-    combineDocumentsChain: BaseChain;
-    inputKey?: string;
-    outputKey?: string;
-    k?: number;
-    returnSourceDocuments?: boolean;
-  }) {
-    super();
+  constructor(fields: VectorDBQAChainInput) {
+    super(fields);
     this.vectorstore = fields.vectorstore;
     this.combineDocumentsChain = fields.combineDocumentsChain;
     this.inputKey = fields.inputKey ?? this.inputKey;
-    this.outputKey = fields.outputKey ?? this.outputKey;
     this.k = fields.k ?? this.k;
     this.returnSourceDocuments =
       fields.returnSourceDocuments ?? this.returnSourceDocuments;
   }
 
-  async _call(values: ChainValues): Promise<ChainValues> {
+  /** @ignore */
+  async _call(
+    values: ChainValues,
+    runManager?: CallbackManagerForChainRun
+  ): Promise<ChainValues> {
     if (!(this.inputKey in values)) {
       throw new Error(`Question key ${this.inputKey} not found.`);
     }
     const question: string = values[this.inputKey];
-    const docs = await this.vectorstore.similaritySearch(question, this.k);
+    const docs = await this.vectorstore.similaritySearch(
+      question,
+      this.k,
+      values.filter,
+      runManager?.getChild("vectorstore")
+    );
     const inputs = { question, input_documents: docs };
-    const result = await this.combineDocumentsChain.call(inputs);
+    const result = await this.combineDocumentsChain.call(
+      inputs,
+      runManager?.getChild("combine_documents")
+    );
     if (this.returnSourceDocuments) {
       return {
         ...result,
@@ -85,14 +115,15 @@ export class VectorDBQAChain extends BaseChain implements VectorDBQAChainInput {
       );
     }
     const { vectorstore } = values;
-    const serializedCombineDocumentsChain = await resolveConfigFromFile<
-      "combine_documents_chain",
-      SerializedBaseChain
-    >("combine_documents_chain", data);
+    if (!data.combine_documents_chain) {
+      throw new Error(
+        `VectorDBQAChain must have combine_documents_chain in serialized data`
+      );
+    }
 
     return new VectorDBQAChain({
       combineDocumentsChain: await BaseChain.deserialize(
-        serializedCombineDocumentsChain
+        data.combine_documents_chain
       ),
       k: data.k,
       vectorstore,
@@ -107,9 +138,18 @@ export class VectorDBQAChain extends BaseChain implements VectorDBQAChainInput {
     };
   }
 
+  /**
+   * Static method that creates a VectorDBQAChain instance from a
+   * BaseLanguageModel and a vector store. It also accepts optional options
+   * to customize the chain.
+   * @param llm The BaseLanguageModel instance.
+   * @param vectorstore The vector store used for similarity search.
+   * @param options Optional options to customize the chain.
+   * @returns A new instance of VectorDBQAChain.
+   */
   static fromLLM(
-    llm: BaseLanguageModel,
-    vectorstore: VectorStore,
+    llm: BaseLanguageModelInterface,
+    vectorstore: VectorStoreInterface,
     options?: Partial<
       Omit<VectorDBQAChainInput, "combineDocumentsChain" | "vectorstore">
     >

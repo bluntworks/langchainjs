@@ -1,62 +1,174 @@
-import type { SerializedLLM } from "../llms/base.js";
-import type { SerializedBasePromptTemplate } from "../prompts/serde.js";
-import type { SerializedSqlDatabase } from "../util/sql_utils.js";
+import type { SerializedLLM } from "@langchain/core/language_models/llms";
+import { SerializedBasePromptTemplate } from "@langchain/core/prompts";
 
+/**
+ * Represents the serialized form of an LLMChain. It includes properties
+ * such as `_type`, `llm`, and `prompt`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
 export type SerializedLLMChain = {
   _type: "llm_chain";
   llm?: SerializedLLM;
-  llm_path?: string;
   prompt?: SerializedBasePromptTemplate;
-  prompt_path?: string;
 };
 
-export type SerializedSqlDatabaseChain = {
-  sql_database: SerializedSqlDatabase;
-  _type: "sql_database_chain";
-  llm: SerializedLLM;
-  sql_database_chain_path?: string;
+/**
+ * Represents the serialized form of a SequentialChain. It includes
+ * properties such as `_type`, `input_variables`, `output_variables`, and
+ * `chains`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
+export type SerializedSequentialChain = {
+  _type: "sequential_chain";
+  input_variables: string[];
+  output_variables: string[];
+  chains: SerializedBaseChain[];
 };
 
+/**
+ * Represents the serialized form of a SimpleSequentialChain. It includes
+ * properties such as `_type` and `chains`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
+export type SerializedSimpleSequentialChain = {
+  _type: "simple_sequential_chain";
+  chains: Array<SerializedBaseChain>;
+};
+
+/**
+ * Represents the serialized form of a VectorDBQAChain. It includes
+ * properties such as `_type`, `k`, and `combine_documents_chain`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
 export type SerializedVectorDBQAChain = {
   _type: "vector_db_qa";
   k: number;
   combine_documents_chain: SerializedBaseChain;
-  combine_documents_chain_path?: string;
 };
 
+/**
+ * Represents the serialized form of an APIChain. It includes properties
+ * such as `_type`, `api_request_chain`, `api_answer_chain`, and
+ * `api_docs`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
+export type SerializedAPIChain = {
+  _type: "api_chain";
+  api_request_chain: SerializedLLMChain;
+  api_answer_chain: SerializedLLMChain;
+  api_docs: string;
+};
+
+/**
+ * Represents the serialized form of a StuffDocumentsChain. It includes
+ * properties such as `_type` and `llm_chain`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
 export type SerializedStuffDocumentsChain = {
   _type: "stuff_documents_chain";
   llm_chain?: SerializedLLMChain;
-  llm_chain_path?: string;
 };
 
+/**
+ * Represents the serialized form of a ChatVectorDBQAChain. It includes
+ * properties such as `_type`, `k`, `combine_documents_chain`, and
+ * `question_generator`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
 export type SerializedChatVectorDBQAChain = {
   _type: "chat-vector-db";
   k: number;
   combine_documents_chain: SerializedBaseChain;
-  combine_documents_chain_path?: string;
   question_generator: SerializedLLMChain;
 };
 
+/**
+ * Represents the serialized form of a MapReduceDocumentsChain. It
+ * includes properties such as `_type`, `llm_chain`, and
+ * `combine_document_chain`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
 export type SerializedMapReduceDocumentsChain = {
   _type: "map_reduce_documents_chain";
   llm_chain?: SerializedLLMChain;
-  llm_chain_path?: string;
-  combine_document_chain?: SerializedBaseChain;
-  combine_document_chain_path?: string;
+  combine_document_chain?: SerializedStuffDocumentsChain;
 };
 
+/**
+ * Represents the serialized form of a RefineDocumentsChain. It includes
+ * properties such as `_type`, `llm_chain`, and `refine_llm_chain`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
+export type SerializedRefineDocumentsChain = {
+  _type: "refine_documents_chain";
+  llm_chain?: SerializedLLMChain;
+  refine_llm_chain?: SerializedLLMChain;
+};
+
+/**
+ * Represents the serialized form of an AnalyzeDocumentChain. It includes
+ * properties such as `_type` and `combine_document_chain`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
 export type SerializedAnalyzeDocumentChain = {
   _type: "analyze_document_chain";
   combine_document_chain?: SerializedBaseChain;
-  combine_document_chain_path?: string;
 };
 
+/**
+ * Represents the serialized form of a ConstitutionalPrinciple. It
+ * includes properties such as `_type`, `critiqueRequest`,
+ * `revisionRequest`, and `name`.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
+export type SerializedConstitutionalPrinciple = {
+  _type: "constitutional_principle";
+  critiqueRequest: string;
+  revisionRequest: string;
+  name: string;
+};
+
+/**
+ * Represents the serialized form of a ConstitutionalChain. It includes
+ * properties such as `_type`, `chain`, `critiqueChain`, `revisionChain`,
+ * and `ConstitutionalPrinciple`.
+ *
+ * @deprecated
+ */
+export type SerializedConstitutionalChain = {
+  _type: "constitutional_chain";
+  chain?: SerializedLLMChain;
+  critiqueChain?: SerializedBaseChain;
+  revisionChain?: SerializedBaseChain;
+  ConstitutionalPrinciple?: SerializedConstitutionalPrinciple[];
+};
+
+/**
+ * Represents the serialized form of a BaseChain. It can be one of the
+ * above serialized chain types.
+ *
+ * @deprecated Use newer {@link https://api.js.langchain.com/functions/langchain_load.load.html | serialization methods}.
+ */
 export type SerializedBaseChain =
   | SerializedLLMChain
+  | SerializedSequentialChain
+  | SerializedSimpleSequentialChain
   | SerializedVectorDBQAChain
+  | SerializedAPIChain
   | SerializedStuffDocumentsChain
-  | SerializedSqlDatabaseChain
   | SerializedChatVectorDBQAChain
   | SerializedMapReduceDocumentsChain
-  | SerializedAnalyzeDocumentChain;
+  | SerializedAnalyzeDocumentChain
+  | SerializedRefineDocumentsChain
+  | SerializedConstitutionalChain;

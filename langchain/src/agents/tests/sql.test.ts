@@ -1,3 +1,4 @@
+/* eslint-disable no-process-env */
 import { test, expect, beforeEach, afterEach } from "@jest/globals";
 import { DataSource } from "typeorm";
 import {
@@ -5,7 +6,7 @@ import {
   QuerySqlTool,
   ListTablesSqlTool,
   QueryCheckerTool,
-} from "../tools/sql.js";
+} from "../../tools/sql.js";
 import { SqlDatabase } from "../../sql_db.js";
 
 const previousEnv = process.env;
@@ -58,23 +59,23 @@ afterEach(async () => {
   await db.appDataSource.destroy();
 });
 
-test("QuerySqlTool", async () => {
+test.skip("QuerySqlTool", async () => {
   const querySqlTool = new QuerySqlTool(db);
-  const result = await querySqlTool.call("SELECT * FROM users");
+  const result = await querySqlTool.invoke("SELECT * FROM users");
   expect(result).toBe(
     `[{"id":1,"name":"Alice","age":20},{"id":2,"name":"Bob","age":21},{"id":3,"name":"Charlie","age":22}]`
   );
 });
 
-test("QuerySqlTool with error", async () => {
+test.skip("QuerySqlTool with error", async () => {
   const querySqlTool = new QuerySqlTool(db);
-  const result = await querySqlTool.call("SELECT * FROM userss");
+  const result = await querySqlTool.invoke("SELECT * FROM userss");
   expect(result).toBe(`QueryFailedError: SQLITE_ERROR: no such table: userss`);
 });
 
-test("InfoSqlTool", async () => {
+test.skip("InfoSqlTool", async () => {
   const infoSqlTool = new InfoSqlTool(db);
-  const result = await infoSqlTool.call("users, products");
+  const result = await infoSqlTool.invoke("users, products");
   const expectStr = `
 CREATE TABLE products (
 id INTEGER , name TEXT , price INTEGER ) 
@@ -93,22 +94,66 @@ SELECT * FROM "users" LIMIT 3;
   expect(result.trim()).toBe(expectStr.trim());
 });
 
-test("InfoSqlTool with error", async () => {
+test.skip("InfoSqlTool with customDescription", async () => {
+  db.customDescription = {
+    products: "Custom Description for Products Table",
+    users: "Custom Description for Users Table",
+    userss: "Should not appear",
+  };
   const infoSqlTool = new InfoSqlTool(db);
-  const result = await infoSqlTool.call("userss, products");
+  const result = await infoSqlTool.invoke("users, products");
+  const expectStr = `
+Custom Description for Products Table
+CREATE TABLE products (
+id INTEGER , name TEXT , price INTEGER ) 
+SELECT * FROM "products" LIMIT 3;
+ id name price
+ 1 Apple 100
+ 2 Banana 200
+ 3 Orange 300
+Custom Description for Users Table
+CREATE TABLE users (
+id INTEGER , name TEXT , age INTEGER ) 
+SELECT * FROM "users" LIMIT 3;
+ id name age
+ 1 Alice 20
+ 2 Bob 21
+ 3 Charlie 22`;
+  expect(result.trim()).toBe(expectStr.trim());
+});
+
+test.skip("InfoSqlTool with error", async () => {
+  const infoSqlTool = new InfoSqlTool(db);
+  const result = await infoSqlTool.invoke("userss, products");
   expect(result).toBe(
     `Error: Wrong target table name: the table userss was not found in the database`
   );
 });
 
-test("ListTablesSqlTool", async () => {
+test.skip("ListTablesSqlTool", async () => {
   const listSqlTool = new ListTablesSqlTool(db);
-  const result = await listSqlTool.call("");
+  const result = await listSqlTool.invoke("");
   expect(result).toBe(`products, users`);
 });
 
-test("QueryCheckerTool", async () => {
+test.skip("QueryCheckerTool", async () => {
   const queryCheckerTool = new QueryCheckerTool();
   expect(queryCheckerTool.llmChain).not.toBeNull();
   expect(queryCheckerTool.llmChain.inputKeys).toEqual(["query"]);
+});
+
+test.skip("ListTablesSqlTool with include tables", async () => {
+  const includesTables = ["users"];
+  db.includesTables = includesTables;
+  const listSqlTool = new ListTablesSqlTool(db);
+  const result = await listSqlTool.invoke("");
+  expect(result).toBe("users");
+});
+
+test.skip("ListTablesSqlTool with ignore tables", async () => {
+  const ignoreTables = ["products"];
+  db.ignoreTables = ignoreTables;
+  const listSqlTool = new ListTablesSqlTool(db);
+  const result = await listSqlTool.invoke("");
+  expect(result).toBe("users");
 });

@@ -1,38 +1,38 @@
-import { CallbackManager } from "langchain/callbacks";
-import { ChatOpenAI } from "langchain/chat_models";
-import { HumanChatMessage } from "langchain/schema";
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage } from "@langchain/core/messages";
 
-export const run = async () => {
-  const chat = new ChatOpenAI({
-    maxTokens: 25,
-    streaming: true,
-    callbackManager: CallbackManager.fromHandlers({
-      async handleLLMNewToken(token: string) {
+const chat = new ChatOpenAI({
+  maxTokens: 25,
+  streaming: true,
+});
+
+const response = await chat.invoke([new HumanMessage("Tell me a joke.")], {
+  callbacks: [
+    {
+      handleLLMNewToken(token: string) {
         console.log({ token });
       },
-    }),
-  });
+    },
+  ],
+});
 
-  const response = await chat.call([new HumanChatMessage("Tell me a joke.")]);
-
-  console.log(response);
-  // { token: '' }
-  // { token: '\n\n' }
-  // { token: 'Why' }
-  // { token: ' don' }
-  // { token: "'t" }
-  // { token: ' scientists' }
-  // { token: ' trust' }
-  // { token: ' atoms' }
-  // { token: '?\n\n' }
-  // { token: 'Because' }
-  // { token: ' they' }
-  // { token: ' make' }
-  // { token: ' up' }
-  // { token: ' everything' }
-  // { token: '.' }
-  // { token: '' }
-  // AIChatMessage {
-  //   text: "\n\nWhy don't scientists trust atoms?\n\nBecause they make up everything."
-  // }
-};
+console.log(response);
+// { token: '' }
+// { token: '\n\n' }
+// { token: 'Why' }
+// { token: ' don' }
+// { token: "'t" }
+// { token: ' scientists' }
+// { token: ' trust' }
+// { token: ' atoms' }
+// { token: '?\n\n' }
+// { token: 'Because' }
+// { token: ' they' }
+// { token: ' make' }
+// { token: ' up' }
+// { token: ' everything' }
+// { token: '.' }
+// { token: '' }
+// AIMessage {
+//   text: "\n\nWhy don't scientists trust atoms?\n\nBecause they make up everything."
+// }

@@ -1,41 +1,45 @@
-import { ChatOpenAI } from "langchain/chat_models";
-import { initializeAgentExecutor } from "langchain/agents";
-import { SerpAPI, Calculator } from "langchain/tools";
-import { BufferMemory } from "langchain/memory";
+import { ChatOpenAI } from "@langchain/openai";
+import { initializeAgentExecutorWithOptions } from "langchain/agents";
+import { Calculator } from "@langchain/community/tools/calculator";
+import { SerpAPI } from "@langchain/community/tools/serpapi";
 
 export const run = async () => {
   process.env.LANGCHAIN_HANDLER = "langchain";
   const model = new ChatOpenAI({ temperature: 0 });
-  const tools = [new SerpAPI(), new Calculator()];
+  const tools = [
+    new SerpAPI(process.env.SERPAPI_API_KEY, {
+      location: "Austin,Texas,United States",
+      hl: "en",
+      gl: "us",
+    }),
+    new Calculator(),
+  ];
 
-  const executor = await initializeAgentExecutor(
-    tools,
-    model,
-    "chat-conversational-react-description",
-    true
-  );
-  executor.memory = new BufferMemory({
-    returnMessages: true,
-    memoryKey: "chat_history",
-    inputKey: "input",
+  // Passing "chat-conversational-react-description" as the agent type
+  // automatically creates and uses BufferMemory with the executor.
+  // If you would like to override this, you can pass in a custom
+  // memory option, but the memoryKey set on it must be "chat_history".
+  const executor = await initializeAgentExecutorWithOptions(tools, model, {
+    agentType: "chat-conversational-react-description",
+    verbose: true,
   });
   console.log("Loaded agent.");
 
   const input0 = "hi, i am bob";
 
-  const result0 = await executor.call({ input: input0 });
+  const result0 = await executor.invoke({ input: input0 });
 
   console.log(`Got output ${result0.output}`);
 
   const input1 = "whats my name?";
 
-  const result1 = await executor.call({ input: input1 });
+  const result1 = await executor.invoke({ input: input1 });
 
   console.log(`Got output ${result1.output}`);
 
   const input2 = "whats the weather in pomfret?";
 
-  const result2 = await executor.call({ input: input2 });
+  const result2 = await executor.invoke({ input: input2 });
 
   console.log(`Got output ${result2.output}`);
 };

@@ -1,10 +1,7 @@
-import { ChatOpenAI } from "langchain/chat_models";
-import { initializeAgentExecutor } from "langchain/agents";
-import {
-  RequestsGetTool,
-  RequestsPostTool,
-  AIPluginTool,
-} from "langchain/tools";
+import { ChatOpenAI } from "@langchain/openai";
+import { initializeAgentExecutorWithOptions } from "langchain/agents";
+import { RequestsGetTool, RequestsPostTool } from "langchain/tools";
+import { AIPluginTool } from "@langchain/community/tools/aiplugin";
 
 export const run = async () => {
   const tools = [
@@ -14,14 +11,13 @@ export const run = async () => {
       "https://www.klarna.com/.well-known/ai-plugin.json"
     ),
   ];
-  const agent = await initializeAgentExecutor(
+  const executor = await initializeAgentExecutorWithOptions(
     tools,
     new ChatOpenAI({ temperature: 0 }),
-    "chat-zero-shot-react-description",
-    true
+    { agentType: "chat-zero-shot-react-description", verbose: true }
   );
 
-  const result = await agent.call({
+  const result = await executor.invoke({
     input: "what t shirts are available in klarna?",
   });
 

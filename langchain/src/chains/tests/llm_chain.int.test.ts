@@ -1,16 +1,15 @@
 import { test } from "@jest/globals";
-import { OpenAI } from "../../llms/openai.js";
-import { ChatOpenAI } from "../../chat_models/index.js";
+import { OpenAI, ChatOpenAI } from "@langchain/openai";
 import {
   ChatPromptTemplate,
   HumanMessagePromptTemplate,
   PromptTemplate,
-} from "../../prompts/index.js";
-import { LLMChain, ConversationChain } from "../llm_chain.js";
-import { loadChain } from "../load.js";
+} from "@langchain/core/prompts";
+import { LLMChain } from "../llm_chain.js";
+import { BufferMemory } from "../../memory/buffer_memory.js";
 
 test("Test OpenAI", async () => {
-  const model = new OpenAI({ modelName: "text-ada-001" });
+  const model = new OpenAI({ modelName: "gpt-3.5-turbo-instruct" });
   const prompt = new PromptTemplate({
     template: "Print {foo}",
     inputVariables: ["foo"],
@@ -20,8 +19,23 @@ test("Test OpenAI", async () => {
   console.log({ res });
 });
 
+test("Test OpenAI with timeout", async () => {
+  const model = new OpenAI({ modelName: "gpt-3.5-turbo-instruct" });
+  const prompt = new PromptTemplate({
+    template: "Print {foo}",
+    inputVariables: ["foo"],
+  });
+  const chain = new LLMChain({ prompt, llm: model });
+  await expect(() =>
+    chain.call({
+      foo: "my favorite color",
+      timeout: 10,
+    })
+  ).rejects.toThrow();
+});
+
 test("Test run method", async () => {
-  const model = new OpenAI({ modelName: "text-ada-001" });
+  const model = new OpenAI({ modelName: "gpt-3.5-turbo-instruct" });
   const prompt = new PromptTemplate({
     template: "Print {foo}",
     inputVariables: ["foo"],
@@ -31,8 +45,61 @@ test("Test run method", async () => {
   console.log({ res });
 });
 
+test("Test run method", async () => {
+  const model = new OpenAI({ modelName: "gpt-3.5-turbo-instruct" });
+  const prompt = new PromptTemplate({
+    template: "{history} Print {foo}",
+    inputVariables: ["foo", "history"],
+  });
+  const chain = new LLMChain({
+    prompt,
+    llm: model,
+    memory: new BufferMemory(),
+  });
+  const res = await chain.run("my favorite color");
+  console.log({ res });
+});
+
+test("Test memory + cancellation", async () => {
+  const model = new OpenAI({ modelName: "gpt-3.5-turbo-instruct" });
+  const prompt = new PromptTemplate({
+    template: "{history} Print {foo}",
+    inputVariables: ["foo", "history"],
+  });
+  const chain = new LLMChain({
+    prompt,
+    llm: model,
+    memory: new BufferMemory(),
+  });
+  await expect(() =>
+    chain.call({
+      foo: "my favorite color",
+      signal: AbortSignal.timeout(20),
+    })
+  ).rejects.toThrow();
+});
+
+test("Test memory + timeout", async () => {
+  const model = new OpenAI({ modelName: "gpt-3.5-turbo-instruct" });
+  const prompt = new PromptTemplate({
+    template: "{history} Print {foo}",
+    inputVariables: ["foo", "history"],
+  });
+  const chain = new LLMChain({
+    prompt,
+    llm: model,
+    memory: new BufferMemory(),
+  });
+  await expect(() =>
+    chain.call({
+      foo: "my favorite color",
+      timeout: 20,
+    })
+  ).rejects.toThrow();
+});
+
 test("Test apply", async () => {
-  const model = new OpenAI({ modelName: "text-ada-001" });
+  const model = new OpenAI({ modelName: "gpt-3.5-turbo-instruct" });
   const prompt = new PromptTemplate({
     template: "Print {foo}",
     inputVariables: ["foo"],
@@ -42,25 +109,12 @@ test("Test apply", async () => {
   console.log({ res });
 });
 
-test("Load chain from hub", async () => {
-  const chain = await loadChain("lc://chains/hello-world/chain.json");
-  const res = await chain.call({ topic: "my favorite color" });
-  console.log({ res });
-});
-
-test("Test ConversationChain", async () => {
-  const model = new OpenAI({ modelName: "text-ada-001" });
-  const chain = new ConversationChain({ llm: model });
-  const res = await chain.call({ input: "my favorite color" });
-  console.log({ res });
-});
-
 test("Test LLMChain with ChatOpenAI", async () => {
   const model = new ChatOpenAI({ temperature: 0.9 });
   const template = "What is a good name for a company that makes {product}?";
   const prompt = new PromptTemplate({ template, inputVariables: ["product"] });
   const humanMessagePrompt = new HumanMessagePromptTemplate(prompt);
-  const chatPromptTemplate = ChatPromptTemplate.fromPromptMessages([
+  const chatPromptTemplate = ChatPromptTemplate.fromMessages([
     humanMessagePrompt,
   ]);
   const chatChain = new LLMChain({ llm: model, prompt: chatPromptTemplate });
@@ -68,20 +122,19 @@ test("Test LLMChain with ChatOpenAI", async () => {
   console.log({ res });
 });
 
-test("Test deserialize", async () => {
-  const model = new ChatOpenAI();
-  const prompt = new PromptTemplate({
-    template: "Print {foo}",
-    inputVariables: ["foo"],
+test("Test passing a runnable to an LLMChain", async () => {
+  const model = new ChatOpenAI({ modelName: "gpt-3.5-turbo-1106" });
+  const runnableModel = model.bind({
+    response_format: {
+      type: "json_object",
+    },
   });
-  const chain = new LLMChain({ prompt, llm: model });
-
-  const serialized = chain.serialize();
-  // console.log(serialized)
-  const chain2 = await LLMChain.deserialize({ ...serialized });
-
-  const res = await chain2.run("my favorite color");
-  console.log({ res });
-
-  // chain === chain2?
+  const prompt = PromptTemplate.fromTemplate(
+    "You are a bee --I mean a spelling bee. Respond with a JSON key of 'spelling':\nQuestion:{input}"
+  );
+  const chain = new LLMChain({ llm: runnableModel, prompt });
+  const response = await chain.invoke({ input: "How do you spell today?" });
+  expect(JSON.parse(response.text)).toMatchObject({
+    spelling: expect.any(String),
+  });
 });

@@ -3,7 +3,7 @@ import {
   HumanMessagePromptTemplate,
   PromptTemplate,
   SystemMessagePromptTemplate,
-} from "langchain/prompts";
+} from "@langchain/core/prompts";
 
 export const run = async () => {
   // A `PromptTemplate` consists of a template string and a list of input variables.
@@ -32,7 +32,7 @@ export const run = async () => {
   */
 
   // For chat models, we provide a `ChatPromptTemplate` class that can be used to format chat prompts.
-  const chatPrompt = ChatPromptTemplate.fromPromptMessages([
+  const chatPrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(
       "You are a helpful assistant that translates {input_language} to {output_language}."
     ),
@@ -64,10 +64,10 @@ export const run = async () => {
   /*
   {
     messages: [
-        SystemChatMessage {
+        SystemMessage {
           text: 'You are a helpful assistant that translates English to French.'
         },
-        HumanChatMessage { text: 'I love programming.' }
+        HumanMessage { text: 'I love programming.' }
       ]
   }
   */

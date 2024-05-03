@@ -1,8 +1,8 @@
-import url from "node:url";
-import path from "node:path";
+import * as url from "node:url";
+import * as path from "node:path";
 import { test, expect } from "@jest/globals";
-import { CSVLoader } from "../csv.js";
-import { Document } from "../../document.js";
+import { Document } from "@langchain/core/documents";
+import { CSVLoader } from "../fs/csv.js";
 
 test("Test CSV loader from file with column arg", async () => {
   const filePath = path.resolve(
@@ -34,6 +34,24 @@ test("Test CSV loader without column arg", async () => {
   );
   const loader = new CSVLoader(filePath);
   const docs = await loader.load();
+  expect(docs.length).toBe(32);
+  expect(docs[0]).toEqual(
+    new Document({
+      metadata: { source: filePath, line: 1 },
+      pageContent: `id: 1
+html: <i>Corruption discovered at the core of the Banking Clan!</i>`,
+    })
+  );
+});
+
+test("Test CSV loader from file with separator arg", async () => {
+  const filePath = path.resolve(
+    path.dirname(url.fileURLToPath(import.meta.url)),
+    "./example_data/example_separator.csv"
+  );
+  const loader = new CSVLoader(filePath, { separator: "｜" });
+  const docs = await loader.load();
+
   expect(docs.length).toBe(32);
   expect(docs[0]).toEqual(
     new Document({

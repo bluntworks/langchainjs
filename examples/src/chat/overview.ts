@@ -1,24 +1,23 @@
-import { LLMChain } from "langchain";
 import { AgentExecutor, ChatAgent } from "langchain/agents";
-import { ConversationChain } from "langchain/chains";
-import { ChatOpenAI } from "langchain/chat_models";
+import { ConversationChain, LLMChain } from "langchain/chains";
+import { ChatOpenAI } from "@langchain/openai";
 import { BufferMemory } from "langchain/memory";
 import {
   ChatPromptTemplate,
   HumanMessagePromptTemplate,
   MessagesPlaceholder,
   SystemMessagePromptTemplate,
-} from "langchain/prompts";
-import { HumanChatMessage, SystemChatMessage } from "langchain/schema";
-import { SerpAPI } from "langchain/tools";
+} from "@langchain/core/prompts";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { SerpAPI } from "@langchain/community/tools/serpapi";
 
 export const run = async () => {
   const chat = new ChatOpenAI({ temperature: 0 });
 
   // Sending one message to the chat model, receiving one message back
 
-  let response = await chat.call([
-    new HumanChatMessage(
+  let response = await chat.invoke([
+    new HumanMessage(
       "Translate this sentence from English to French. I love programming."
     ),
   ]);
@@ -27,48 +26,44 @@ export const run = async () => {
 
   // Sending an input made up of two messages to the chat model
 
-  response = await chat.call([
-    new SystemChatMessage(
+  response = await chat.invoke([
+    new SystemMessage(
       "You are a helpful assistant that translates English to French."
     ),
-    new HumanChatMessage("Translate: I love programming."),
+    new HumanMessage("Translate: I love programming."),
   ]);
 
   console.log(response);
 
   // Sending two separate prompts in parallel, receiving two responses back
 
-  const responseA = await chat.generate([
-    [
-      new SystemChatMessage(
-        "You are a helpful assistant that translates English to French."
-      ),
-      new HumanChatMessage(
-        "Translate this sentence from English to French. I love programming."
-      ),
-    ],
-    [
-      new SystemChatMessage(
-        "You are a helpful assistant that translates English to French."
-      ),
-      new HumanChatMessage(
-        "Translate this sentence from English to French. I love artificial intelligence."
-      ),
-    ],
+  const responseA = await chat.invoke([
+    new SystemMessage(
+      "You are a helpful assistant that translates English to French."
+    ),
+    new HumanMessage(
+      "Translate this sentence from English to French. I love programming."
+    ),
+    new SystemMessage(
+      "You are a helpful assistant that translates English to French."
+    ),
+    new HumanMessage(
+      "Translate this sentence from English to French. I love artificial intelligence."
+    ),
   ]);
 
   console.log(responseA);
 
   // Using ChatPromptTemplate to encapsulate the reusable parts of the prompt
 
-  const translatePrompt = ChatPromptTemplate.fromPromptMessages([
+  const translatePrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(
       "You are a helpful assistant that translates {input_language} to {output_language}."
     ),
     HumanMessagePromptTemplate.fromTemplate("{text}"),
   ]);
 
-  const responseB = await chat.callPrompt(
+  const responseB = await chat.invoke(
     await translatePrompt.formatPromptValue({
       input_language: "English",
       output_language: "French",
@@ -86,7 +81,7 @@ export const run = async () => {
     llm: chat,
   });
 
-  const responseC = await translateChain.call({
+  const responseC = await translateChain.invoke({
     input_language: "English",
     output_language: "French",
     text: "I love programming.",
@@ -96,7 +91,7 @@ export const run = async () => {
 
   // Next up, stateful chains that remember the conversation history
 
-  const chatPrompt = ChatPromptTemplate.fromPromptMessages([
+  const chatPrompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(
       "The following is a friendly conversation between a human and an AI. The AI is talkative and provides lots of specific details from its context. If the AI does not know the answer to a question, it truthfully says it does not know."
     ),
@@ -110,13 +105,13 @@ export const run = async () => {
     llm: chat,
   });
 
-  const responseE = await chain.call({
+  const responseE = await chain.invoke({
     input: "hi from London, how are you doing today",
   });
 
   console.log(responseE);
 
-  const responseF = await chain.call({
+  const responseF = await chain.invoke({
     input: "Do you know where I am?",
   });
 
@@ -126,15 +121,21 @@ export const run = async () => {
   // other abilities, such as search, or a calculator
 
   // Define the list of tools the agent can use
-  const tools = [new SerpAPI()];
+  const tools = [
+    new SerpAPI(process.env.SERPAPI_API_KEY, {
+      location: "Austin,Texas,United States",
+      hl: "en",
+      gl: "us",
+    }),
+  ];
   // Create the agent from the chat model and the tools
   const agent = ChatAgent.fromLLMAndTools(new ChatOpenAI(), tools);
   // Create an executor, which calls to the agent until an answer is found
   const executor = AgentExecutor.fromAgentAndTools({ agent, tools });
 
-  const responseG = await executor.run(
-    "How many people live in canada as of 2023?"
-  );
+  const responseG = await executor.invoke({
+    input: "How many people live in canada as of 2023?",
+  });
 
   console.log(responseG);
 };

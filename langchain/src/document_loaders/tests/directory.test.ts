@@ -1,11 +1,11 @@
-import url from "node:url";
-import path from "node:path";
+import * as url from "node:url";
+import * as path from "node:path";
 import { test, expect } from "@jest/globals";
-import { DirectoryLoader, UnknownHandling } from "../directory.js";
-import { CSVLoader } from "../csv.js";
-import { PDFLoader } from "../pdf.js";
-import { TextLoader } from "../text.js";
-import { JSONLoader } from "../json.js";
+import { DirectoryLoader, UnknownHandling } from "../fs/directory.js";
+import { CSVLoader } from "../fs/csv.js";
+import { PDFLoader } from "../fs/pdf.js";
+import { TextLoader } from "../fs/text.js";
+import { JSONLoader } from "../fs/json.js";
 
 test("Test Directory loader", async () => {
   const directoryPath = path.resolve(
@@ -15,21 +15,27 @@ test("Test Directory loader", async () => {
   const loader = new DirectoryLoader(
     directoryPath,
     {
-      ".csv": (p) => new CSVLoader(p, "html"),
+      ".csv": (p) => {
+        if (p.includes("separator.csv")) {
+          return new CSVLoader(p, { column: "html", separator: "｜" });
+        }
+        return new CSVLoader(p, "html");
+      },
       ".pdf": (p) => new PDFLoader(p),
       ".txt": (p) => new TextLoader(p),
       ".json": (p) => new JSONLoader(p),
     },
-    true,
+    false,
     UnknownHandling.Ignore
   );
   const docs = await loader.load();
-  expect(docs.length).toBe(90);
+  expect(docs.length).toBe(123);
   expect(docs.map((d) => d.metadata.source).sort()).toEqual([
     // PDF
     ...Array.from({ length: 15 }, (_) =>
       path.resolve(directoryPath, "1706.03762.pdf")
     ),
+    path.resolve(directoryPath, "Jacob_Lee_Resume_2023.pdf"),
     // CSV
     ...Array.from({ length: 32 }, (_) =>
       path.resolve(
@@ -49,5 +55,9 @@ test("Test Directory loader", async () => {
     ),
     // TXT
     path.resolve(directoryPath, "example.txt"),
+    // CSV
+    ...Array.from({ length: 32 }, (_) =>
+      path.resolve(directoryPath, "example_separator.csv")
+    ),
   ]);
 });
